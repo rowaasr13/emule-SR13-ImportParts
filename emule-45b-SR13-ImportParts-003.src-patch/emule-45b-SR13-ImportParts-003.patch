@@ -1,0 +1,193 @@
+diff -ruN 45b-purec-src/CorruptionBlackBox.cpp 45b-shin-src/CorruptionBlackBox.cpp
+--- 45b-purec-src/CorruptionBlackBox.cpp	2004-12-27 22:39:40.000000000 +0300
++++ 45b-shin-src/CorruptionBlackBox.cpp	2005-04-07 15:22:07.136251200 +0400
+@@ -95,6 +95,7 @@
+ 		ASSERT( false );
+ 		return;
+ 	}
++	if(!pSender) return;
+ 	uint32 dwSenderIP = pSender->GetIP();
+ 	// we store records seperated for each part, so we don't have to search all entries everytime
+ 	
+diff -ruN 45b-purec-src/DownloadListCtrl.cpp 45b-shin-src/DownloadListCtrl.cpp
+--- 45b-purec-src/DownloadListCtrl.cpp	2005-02-11 02:37:32.000000000 +0300
++++ 45b-shin-src/DownloadListCtrl.cpp	2005-04-07 15:22:07.286467200 +0400
+@@ -41,6 +41,7 @@
+ #include "Preview.h"
+ #include "StringConversion.h"
+ #include "AddSourceDlg.h"
++#include "SR13-ImportParts.h"
+ 
+ #ifdef _DEBUG
+ #define new DEBUG_NEW
+@@ -1303,7 +1304,9 @@
+ 			else
+ 				m_FileMenu.SetDefaultItem((UINT)-1);
+ 			m_FileMenu.EnableMenuItem(MP_VIEWFILECOMMENTS, (iSelectedItems == 1 && iFilesNotDone == 1) ? MF_ENABLED : MF_GRAYED);
+-
++			m_FileMenu.EnableMenuItem(MP_SR13_ImportParts, (iSelectedItems == 1 && iFilesNotDone == 1) ? MF_ENABLED : MF_GRAYED);
++			m_FileMenu.EnableMenuItem(MP_SR13_InitiateRehash, (iSelectedItems == 1 && iFilesNotDone == 1) ? MF_ENABLED : MF_GRAYED);
++			
+ 			int total;
+ 			m_FileMenu.EnableMenuItem(MP_CLEARCOMPLETED, GetCompleteDownloads(curTab, total) > 0 ? MF_ENABLED : MF_GRAYED);
+ 			m_FileMenu.EnableMenuItem((UINT_PTR)m_A4AFMenu.m_hMenu, (iSelectedItems == 1 && iFilesNotDone == 1) ? MF_ENABLED : MF_GRAYED);
+@@ -1392,6 +1395,8 @@
+ 			m_FileMenu.CheckMenuItem(MP_TRY_TO_GET_PREVIEW_PARTS, MF_UNCHECKED);
+         }
+ 		m_FileMenu.EnableMenuItem(MP_PREVIEW,MF_GRAYED);
++		m_FileMenu.EnableMenuItem(MP_SR13_ImportParts,MF_GRAYED);
++		m_FileMenu.EnableMenuItem(MP_SR13_InitiateRehash,MF_GRAYED);
+ 		m_FileMenu.EnableMenuItem(MP_METINFO, MF_GRAYED);
+ 		m_FileMenu.EnableMenuItem(MP_VIEWFILECOMMENTS, MF_GRAYED);
+ 		m_FileMenu.EnableMenuItem(MP_CLEARCOMPLETED, GetCompleteDownloads(curTab,total) > 0 ? MF_ENABLED : MF_GRAYED);
+@@ -1660,6 +1665,12 @@
+ 				case MP_VIEWFILECOMMENTS:
+ 					ShowFileDialog(NULL, IDD_COMMENTLST);
+ 					break;
++				case MP_SR13_ImportParts:
++					file->SR13_ImportParts();
++					break;
++				case MP_SR13_InitiateRehash:
++					SR13_InitiateRehash(file);
++					break;
+ 				case MP_SHOWED2KLINK:
+ 					ShowFileDialog(NULL, IDD_ED2KLINK);
+ 					break;
+@@ -2147,6 +2158,8 @@
+ 	m_FileMenu.AppendMenu(MF_STRING,MP_PREVIEW, GetResString(IDS_DL_PREVIEW), _T("PREVIEW"));
+ 	m_FileMenu.AppendMenu(MF_STRING,MP_METINFO, GetResString(IDS_DL_INFO), _T("FILEINFO") );//<--9/21/02
+ 	m_FileMenu.AppendMenu(MF_STRING,MP_VIEWFILECOMMENTS, GetResString(IDS_CMT_SHOWALL), _T("FILECOMMENTS") );
++ 	m_FileMenu.AppendMenu(MF_STRING,MP_SR13_ImportParts, _T("Import parts to file..."), _T("SR13IMPORTPARTS"));
++ 	m_FileMenu.AppendMenu(MF_STRING,MP_SR13_InitiateRehash, _T("Initiate rehash"), _T("SR13INITIATEREHASH"));
+ 
+ 	m_FileMenu.AppendMenu(MF_SEPARATOR);
+ 	m_FileMenu.AppendMenu(MF_STRING,MP_CLEARCOMPLETED, GetResString(IDS_DL_CLEAR), _T("CLEARCOMPLETE"));
+diff -ruN 45b-purec-src/KnownFile.h 45b-shin-src/KnownFile.h
+--- 45b-purec-src/KnownFile.h	2005-02-01 17:19:20.000000000 +0300
++++ 45b-shin-src/KnownFile.h	2005-04-07 15:22:12.694243200 +0400
+@@ -159,6 +159,7 @@
+ 	virtual bool IsPartFile() const { return false; }
+ 	virtual bool LoadFromFile(CFileDataIO* file);	//load date, hashset and tags from a .met file
+ 	bool	WriteToFile(CFileDataIO* file);
++	bool	SR13_ImportParts();
+ 	bool	CreateAICHHashSetOnly();
+ 
+ 	// last file modification time in (DST corrected, if NTFS) real UTC format
+@@ -258,6 +259,8 @@
+ 	virtual void Dump(CDumpContext& dc) const;
+ #endif
+ 
++	bool	CreateHash(const uchar* pucData, UINT uSize, uchar* pucHash, CAICHHashTree* pShaHashOut = NULL) const;
++
+ protected:
+ 	//preview
+ 	bool	GrabImage(CString strFileName, uint8 nFramesToGrab, double dStartTime, bool bReduceColor, uint16 nMaxWidth, void* pSender);
+@@ -265,7 +268,6 @@
+ 	bool	LoadDateFromFile(CFileDataIO* file);
+ 	void	CreateHash(CFile* pFile, UINT uSize, uchar* pucHash, CAICHHashTree* pShaHashOut = NULL) const;
+ 	bool	CreateHash(FILE* fp, UINT uSize, uchar* pucHash, CAICHHashTree* pShaHashOut = NULL) const;
+-	bool	CreateHash(const uchar* pucData, UINT uSize, uchar* pucHash, CAICHHashTree* pShaHashOut = NULL) const;
+ 	void	LoadComment();
+ 
+ 	CArray<uchar*, uchar*>	hashlist;
+diff -ruN 45b-purec-src/PartFile.h 45b-shin-src/PartFile.h
+--- 45b-purec-src/PartFile.h	2005-01-25 06:40:02.000000000 +0300
++++ 45b-shin-src/PartFile.h	2005-04-07 15:22:13.625582400 +0400
+@@ -63,7 +63,8 @@
+ 	PFOP_NONE = 0,
+ 	PFOP_HASHING,
+ 	PFOP_COPYING,
+-	PFOP_UNCOMPRESSING
++	PFOP_UNCOMPRESSING,
++	PFOP_SR13_IMPORTPARTS
+ };
+ 
+ class CSearchFile;
+diff -ruN 45b-purec-src/SharedFileList.cpp 45b-shin-src/SharedFileList.cpp
+--- 45b-purec-src/SharedFileList.cpp	2005-02-11 14:18:04.000000000 +0300
++++ 45b-shin-src/SharedFileList.cpp	2005-04-07 15:22:10.250729600 +0400
+@@ -38,6 +38,7 @@
+ #include "StringConversion.h"
+ #include "ClientList.h"
+ #include "Log.h"
++#include "SR13-ImportParts.h"
+ 
+ #ifdef _DEBUG
+ #define new DEBUG_NEW
+@@ -1071,6 +1072,24 @@
+ 	CSingleLock sLock1(&theApp.hashing_mut); // only one filehash at a time
+ 	sLock1.Lock();
+ 
++	if (m_partfile && m_partfile->GetFileOp() == PFOP_SR13_IMPORTPARTS){
++		SR13_ImportParts(m_partfile, m_strImport);
++		if(theApp.emuledlg && theApp.emuledlg->IsRunning() &&
++			m_partfile && m_partfile->GetFileOp() == PFOP_SR13_IMPORTPARTS){
++				m_partfile->SetFileOp(PFOP_HASHING);
++			}
++		// Completing will take care of hashing in case when
++		// user imported data were enough to complete file
++		if (m_partfile->GetStatus(false) == PS_COMPLETING){
++			sLock1.Unlock();
++			CoUninitialize();
++			return 0;
++		}
++	}
++	// TODO: Test case when suposeddly correct, but actually broken verified data is
++	// completed with import and see if file recovers its started/paused state correctly
++	// after failed completion.
++
+ 	CString strFilePath;
+ 	_tmakepath(strFilePath.GetBuffer(MAX_PATH), NULL, m_strDirectory, m_strFilename, NULL);
+ 	strFilePath.ReleaseBuffer();
+diff -ruN 45b-purec-src/SharedFileList.h 45b-shin-src/SharedFileList.h
+--- 45b-purec-src/SharedFileList.h	2005-01-25 06:40:04.000000000 +0300
++++ 45b-shin-src/SharedFileList.h	2005-04-07 15:22:14.546907200 +0400
+@@ -100,10 +100,12 @@
+ 	virtual BOOL InitInstance();
+ 	virtual int	Run();
+ 	void	SetValues(CSharedFileList* pOwner, LPCTSTR directory, LPCTSTR filename, CPartFile* partfile = NULL);
++	void	SetValues(CSharedFileList* pOwner, LPCTSTR directory, LPCTSTR filename, CPartFile* partfile, LPCTSTR import);
+ 
+ private:
+ 	CSharedFileList* m_pOwner;
+ 	CString			 m_strDirectory;
+ 	CString			 m_strFilename;
+ 	CPartFile*		 m_partfile;
++	CString          m_strImport;
+ };
+diff -ruN 45b-purec-src/emule.vcproj 45b-shin-src/emule.vcproj
+--- 45b-purec-src/emule.vcproj	2005-01-25 06:40:04.000000000 +0300
++++ 45b-shin-src/emule.vcproj	2005-04-05 20:10:37.543196800 +0400
+@@ -419,6 +419,9 @@
+ 				RelativePath="Sockets.cpp">
+ 			</File>
+ 			<File
++				RelativePath="SR13-ImportParts.cpp">
++			</File>
++			<File
+ 				RelativePath="Statistics.cpp">
+ 			</File>
+ 			<File
+@@ -719,6 +722,12 @@
+ 				RelativePath="Sockets.h">
+ 			</File>
+ 			<File
++				RelativePath="SR13-ImportParts.h">
++			</File>
++			<File
++				RelativePath="SR13-ImportParts.rc.h">
++			</File>
++			<File
+ 				RelativePath="Statistics.h">
+ 			</File>
+ 			<File
+@@ -2105,6 +2114,9 @@
+ 				RelativePath="res\SpeedMin.ico">
+ 			</File>
+ 			<File
++				RelativePath="SR13-ImportParts.rc">
++			</File>
++			<File
+ 				RelativePath="res\Start.ico">
+ 			</File>
+ 			<File

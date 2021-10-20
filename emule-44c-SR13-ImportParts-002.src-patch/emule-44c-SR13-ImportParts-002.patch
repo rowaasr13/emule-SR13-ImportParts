@@ -1,0 +1,122 @@
+diff -ruN 44c-pure-c-src/CorruptionBlackBox.cpp 44c-impr-002-diff/CorruptionBlackBox.cpp
+--- 44c-pure-c-src/CorruptionBlackBox.cpp	2004-11-13 14:38:58.000000000 +0300
++++ 44c-impr-002-diff/CorruptionBlackBox.cpp	2004-11-18 15:54:40.890824000 +0300
+@@ -89,6 +89,7 @@
+ 		ASSERT( false );
+ 		return;
+ 	}
++	if(!pSender) return;
+ 	uint32 dwSenderIP = pSender->GetIP();
+ 	// we store records seperated for each part, so we don't have to search all entries everytime
+ 	
+diff -ruN 44c-pure-c-src/DownloadListCtrl.cpp 44c-impr-002-diff/DownloadListCtrl.cpp
+--- 44c-pure-c-src/DownloadListCtrl.cpp	2004-11-11 14:06:14.000000000 +0300
++++ 44c-impr-002-diff/DownloadListCtrl.cpp	2004-11-15 17:58:52.604566400 +0300
+@@ -41,6 +41,8 @@
+ #include "Preview.h"
+ #include "StringConversion.h"
+ #include "AddSourceDlg.h"
++#include "SR13-ImportParts.h"
+ 
+ #ifdef _DEBUG
+ #undef THIS_FILE
+@@ -1294,6 +1304,8 @@
+ 			else
+ 				m_FileMenu.SetDefaultItem((UINT)-1);
+ 			m_FileMenu.EnableMenuItem(MP_VIEWFILECOMMENTS, (iSelectedItems == 1 && iFilesNotDone == 1) ? MF_ENABLED : MF_GRAYED);
++			m_FileMenu.EnableMenuItem(MP_SR13_ImportParts, (iSelectedItems == 1 && iFilesNotDone == 1) ? MF_ENABLED : MF_GRAYED);
++			m_FileMenu.EnableMenuItem(MP_SR13_InitiateRehash, (iSelectedItems == 1 && iFilesNotDone == 1) ? MF_ENABLED : MF_GRAYED);
+ 
+ 			int total;
+ 			m_FileMenu.EnableMenuItem(MP_CLEARCOMPLETED, GetCompleteDownloads(curTab, total) > 0 ? MF_ENABLED : MF_GRAYED);
+@@ -1383,6 +1395,8 @@
+ 			m_FileMenu.CheckMenuItem(MP_TRY_TO_GET_PREVIEW_PARTS, MF_UNCHECKED);
+         }
+ 		m_FileMenu.EnableMenuItem(MP_PREVIEW,MF_GRAYED);
++		m_FileMenu.EnableMenuItem(MP_SR13_ImportParts,MF_GRAYED);
++		m_FileMenu.EnableMenuItem(MP_SR13_InitiateRehash,MF_GRAYED);
+ 		m_FileMenu.EnableMenuItem(MP_METINFO, MF_GRAYED);
+ 		m_FileMenu.EnableMenuItem(MP_VIEWFILECOMMENTS, MF_GRAYED);
+ 		m_FileMenu.EnableMenuItem(MP_CLEARCOMPLETED, GetCompleteDownloads(curTab,total) > 0 ? MF_ENABLED : MF_GRAYED);
+@@ -1639,6 +1656,12 @@
+ 				case MP_VIEWFILECOMMENTS:
+ 					ShowFileDialog(NULL, INP_COMMENTPAGE);
+ 					break;
++				case MP_SR13_ImportParts:
++					file->SR13_ImportParts();
++					break;
++				case MP_SR13_InitiateRehash:
++					SR13_InitiateRehash(file);
++					break;
+ 				case MP_SHOWED2KLINK:
+ 					ShowFileDialog(NULL, INP_LINKPAGE);
+ 					break;
+@@ -2075,6 +2098,8 @@
+ 	m_FileMenu.AppendMenu(MF_STRING,MP_PREVIEW, GetResString(IDS_DL_PREVIEW), _T("PREVIEW"));
+ 	m_FileMenu.AppendMenu(MF_STRING,MP_METINFO, GetResString(IDS_DL_INFO), _T("FILEINFO") );//<--9/21/02
+ 	m_FileMenu.AppendMenu(MF_STRING,MP_VIEWFILECOMMENTS, GetResString(IDS_CMT_SHOWALL), _T("FILECOMMENTS") );
++ 	m_FileMenu.AppendMenu(MF_STRING,MP_SR13_ImportParts, _T("Import parts to file..."), _T("SR13IMPORTPARTS"));
++ 	m_FileMenu.AppendMenu(MF_STRING,MP_SR13_InitiateRehash, _T("Initiate rehash"), _T("SR13INITIATEREHASH"));
+ 
+ 	m_FileMenu.AppendMenu(MF_SEPARATOR);
+ 	m_FileMenu.AppendMenu(MF_STRING,MP_CLEARCOMPLETED, GetResString(IDS_DL_CLEAR), _T("CLEARCOMPLETE"));
+diff -ruN 44c-pure-c-src/KnownFile.h 44c-impr-002-diff/KnownFile.h
+--- 44c-pure-c-src/KnownFile.h	2004-09-30 19:57:28.000000000 +0400
++++ 44c-impr-002-diff/KnownFile.h	2004-12-23 13:46:39.874318400 +0300
+@@ -154,6 +154,8 @@
+ 	virtual bool IsPartFile() const { return false; }
+ 	virtual bool LoadFromFile(CFileDataIO* file);	//load date, hashset and tags from a .met file
+ 	bool	WriteToFile(CFileDataIO* file);
++	bool	SR13_ImportParts();
+ 	bool	CreateAICHHashSetOnly();
+ 
+ 	// last file modification time in (DST corrected, if NTFS) real UTC format
+diff -ruN 44c-pure-c-src/PartFile.h 44c-impr-002-diff/PartFile.h
+--- 44c-pure-c-src/PartFile.h	2004-11-06 17:12:08.000000000 +0300
++++ 44c-impr-002-diff/PartFile.h	2004-12-16 19:56:53.516276800 +0300
+@@ -63,7 +63,8 @@
+ 	PFOP_NONE = 0,
+ 	PFOP_HASHING,
+ 	PFOP_COPYING,
+-	PFOP_UNCOMPRESSING
++	PFOP_UNCOMPRESSING,
++	PFOP_SR13_IMPORTPARTS
+ };
+ 
+ class CSearchFile;
+diff -ruN 44c-pure-c-src/emule.vcproj 44c-impr-002-diff/emule.vcproj
+--- 44c-pure-c-src/emule.vcproj	2004-11-05 21:30:16.000000000 +0300
++++ 44c-impr-002-diff/emule.vcproj	2004-12-24 14:08:38.976524800 +0300
+@@ -728,6 +728,9 @@
+ 				RelativePath="Sockets.cpp">
+ 			</File>
+ 			<File
++				RelativePath="SR13-ImportParts.cpp">
++			</File>
++			<File
+ 				RelativePath="Statistics.cpp">
+ 			</File>
+ 			<File
+@@ -1046,6 +1049,12 @@
+ 				RelativePath="Sockets.h">
+ 			</File>
+ 			<File
++				RelativePath="SR13-ImportParts.h">
++			</File>
++			<File
++				RelativePath="SR13-ImportParts.rc.h">
++			</File>
++			<File
+ 				RelativePath="Statistics.h">
+ 			</File>
+ 			<File
+@@ -2437,6 +2446,9 @@
+ 				RelativePath="emule.rc">
+ 			</File>
+ 			<File
++				RelativePath="SR13-ImportParts.rc">
++			</File>
++			<File
+ 				RelativePath="res\emule.rc2">
+ 			</File>
+ 			<File
